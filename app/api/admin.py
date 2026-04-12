@@ -4,7 +4,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
 from app import db
 from app.models import User, Indicador, ImportLog
-from app.services import import_excel_indicadores, import_custo_fixo
+from app.services import import_excel_indicadores, import_custo_fixo, import_receita
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -43,8 +43,8 @@ def create_user():
         return err
     data = request.get_json()
     username = (data.get("username") or "").strip()
-    email = (data.get("email") or "").strip()
-    password = data.get("password") or ""
+    email    = (data.get("email")    or "").strip()
+    password = data.get("password")  or ""
     is_admin = bool(data.get("is_admin", False))
 
     if not username or not email or not password:
@@ -81,12 +81,9 @@ def update_user(uid):
         return err
     u = User.query.get_or_404(uid)
     data = request.get_json()
-    if "is_admin" in data:
-        u.is_admin = bool(data["is_admin"])
-    if "is_active" in data:
-        u.is_active = bool(data["is_active"])
-    if "password" in data and data["password"]:
-        u.set_password(data["password"])
+    if "is_admin"  in data: u.is_admin  = bool(data["is_admin"])
+    if "is_active" in data: u.is_active = bool(data["is_active"])
+    if "password"  in data and data["password"]: u.set_password(data["password"])
     db.session.commit()
     return jsonify(u.to_dict())
 
@@ -106,7 +103,7 @@ def import_indicadores():
         return jsonify({"error": "Formato inválido. Envie .xlsx ou .xls."}), 400
 
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-    filename = secure_filename(file.filename)
+    filename  = secure_filename(file.filename)
     save_path = os.path.join(UPLOAD_FOLDER, filename)
     file.save(save_path)
 
@@ -136,7 +133,7 @@ def import_custo():
         return jsonify({"error": "Formato inválido. Envie .xlsx ou .xls."}), 400
 
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-    filename = secure_filename(file.filename)
+    filename  = secure_filename(file.filename)
     save_path = os.path.join(UPLOAD_FOLDER, filename)
     file.save(save_path)
 
@@ -153,6 +150,36 @@ def import_custo():
         return jsonify({"error": f"Erro inesperado: {e}"}), 500
 
 
+@admin_bp.route("/import/receita", methods=["POST"])
+@jwt_required()
+def import_receita_view():
+    user, err = require_admin()
+    if err:
+        return err
+    file = request.files.get("planilha_receita")
+    if not file or file.filename == "":
+        return jsonify({"error": "Nenhum arquivo selecionado."}), 400
+    if not allowed_file(file.filename):
+        return jsonify({"error": "Formato inválido. Envie .xlsx ou .xls."}), 400
+
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    filename  = secure_filename(file.filename)
+    save_path = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(save_path)
+
+    try:
+        total = import_receita(save_path)
+        log = ImportLog(tipo="receita", filename=filename, total=total, imported_by=user.username)
+        db.session.add(log)
+        db.session.commit()
+        return jsonify({"message": f"{total} registros de receita importados.", "total": total})
+    except ValueError as e:
+        return jsonify({"error": f"Erro na planilha: {e}"}), 422
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Erro inesperado: {e}"}), 500
+
+
 @admin_bp.route("/import/logs", methods=["GET"])
 @jwt_required()
 def import_logs():
@@ -161,7 +188,7 @@ def import_logs():
         return err
     logs = ImportLog.query.order_by(ImportLog.imported_at.desc()).limit(20).all()
     return jsonify({
-        "logs": [l.to_dict() for l in logs],
+        "logs":      [l.to_dict() for l in logs],
         "total_ind": Indicador.query.count(),
     })
 
@@ -184,9 +211,9 @@ def set_pai():
     user, err = require_admin()
     if err:
         return err
-    data = request.get_json()
+    data     = request.get_json()
     filho_id = data.get("filho_id")
-    pai_id = data.get("pai_id")
+    pai_id   = data.get("pai_id")
 
     filho = Indicador.query.get_or_404(filho_id)
     if pai_id:
@@ -198,13 +225,13 @@ def set_pai():
                     return jsonify({"error": "Referência circular detectada."}), 400
                 cur = Indicador.query.get(cur.pai_id)
             filho.pai_id = pai_id
-            filho.nivel = (candidato.nivel or 0) + 1
+            filho.nivel  = (candidato.nivel or 0) + 1
         else:
             filho.pai_id = None
-            filho.nivel = 0
+            filho.nivel  = 0
     else:
         filho.pai_id = None
-        filho.nivel = 0
+        filho.nivel  = 0
 
     db.session.commit()
     return jsonify(filho.to_dict())
@@ -218,7 +245,7 @@ def remover_pai(ind_id):
         return err
     ind = Indicador.query.get_or_404(ind_id)
     ind.pai_id = None
-    ind.nivel = 0
+    ind.nivel  = 0
     db.session.commit()
     return jsonify(ind.to_dict())
 
@@ -226,31 +253,25 @@ def remover_pai(ind_id):
 @admin_bp.route("/hierarquia/auto-detectar", methods=["POST"])
 @jwt_required()
 def auto_detectar():
-    """Detecta e aplica hierarquia automaticamente pelo prefixo do nome e tipo."""
     user, err = require_admin()
     if err:
         return err
 
-    # Ordem de nível por tipo
     NIVEL_TIPO = {'IC': 0, 'IE': 1, 'IO': 2, 'IT': 3, 'IV': 4}
-
     inds = Indicador.query.all()
 
-    # Reset tudo
     for ind in inds:
         ind.pai_id = None
-        ind.nivel = 0
+        ind.nivel  = 0
     db.session.flush()
 
-    # Ordena por nível (pais primeiro)
     inds_sorted = sorted(inds, key=lambda x: NIVEL_TIPO.get(x.tipo or '', 99))
+    vinculados  = 0
 
-    vinculados = 0
     for ind in inds_sorted:
-        nivel_ind = NIVEL_TIPO.get(ind.tipo or '', 99)
-        # Busca o pai: mesmo prefixo, nível imediatamente acima, mesma área
-        melhor_pai = None
-        melhor_len = 0
+        nivel_ind   = NIVEL_TIPO.get(ind.tipo or '', 99)
+        melhor_pai  = None
+        melhor_len  = 0
         for candidato in inds_sorted:
             nivel_cand = NIVEL_TIPO.get(candidato.tipo or '', 99)
             if nivel_cand >= nivel_ind:
@@ -262,7 +283,6 @@ def auto_detectar():
             if nome_ind.startswith(nome_cand) and len(nome_cand) > melhor_len:
                 melhor_pai = candidato
                 melhor_len = len(nome_cand)
-
         if melhor_pai:
             ind.pai_id = melhor_pai.id
             ind.nivel  = (melhor_pai.nivel or 0) + 1

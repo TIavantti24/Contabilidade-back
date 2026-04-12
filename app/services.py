@@ -340,3 +340,89 @@ def import_custo_fixo(path: str) -> int:
 
     db.session.commit()
     return count
+
+def import_receita(path: str) -> int:
+    """Importa planilha de receita — mesma estrutura do custo fixo."""
+    from app.models import Receita
+    import datetime
+
+    df = pd.read_excel(path)
+    df.columns = [str(c).strip() for c in df.columns]
+
+    col_map = {_normalize(c): c for c in df.columns}
+
+    def find_col(*names):
+        for n in names:
+            if _normalize(n) in col_map:
+                return col_map[_normalize(n)]
+        return None
+
+    col_ativ = find_col("atividade")
+    col_desc = find_col("descrição", "descricao")
+    col_data = find_col("data")
+    col_rea  = find_col("realizado")
+    col_orc  = find_col("orçado", "orcado")
+
+    if not col_ativ:
+        raise ValueError("Coluna 'Atividade' não encontrada na planilha de Receita.")
+
+    Receita.query.delete()
+    db.session.flush()
+
+    count = 0
+    for _, row in df.iterrows():
+        atividade = str(row.get(col_ativ, "") or "").strip()
+        if not atividade or atividade.lower() == "nan":
+            continue
+
+        data_raw = row.get(col_data) if col_data else None
+        data_str, ano, mes = "", None, None
+
+        if data_raw is not None:
+            if isinstance(data_raw, (datetime.datetime, datetime.date)):
+                ano, mes = data_raw.year, data_raw.month
+                data_str = f"{ano}-{mes:02d}"
+            else:
+                data_str = str(data_raw).strip()
+                if "/" in data_str:
+                    parts = data_str.split("/")
+                    if len(parts) == 3:
+                        try:
+                            dia, mes, ano = int(parts[0]), int(parts[1]), int(parts[2])
+                            data_str = f"{ano}-{mes:02d}"
+                        except ValueError:
+                            pass
+                elif "-" in data_str:
+                    parts = data_str.split("-")
+                    if len(parts) >= 2:
+                        try:
+                            ano, mes = int(parts[0]), int(parts[1])
+                        except ValueError:
+                            pass
+
+        def safe_float(col):
+            if not col:
+                return None
+            v = row.get(col)
+            if v is None:
+                return None
+            try:
+                f = float(v)
+                return f if not pd.isna(f) else None
+            except (ValueError, TypeError):
+                return None
+
+        rec = Receita(
+            atividade=atividade,
+            descricao=str(row.get(col_desc, "") or "").strip() if col_desc else "",
+            data=data_str,
+            ano=ano,
+            mes=mes,
+            realizado=safe_float(col_rea),
+            orcado=safe_float(col_orc),
+        )
+        db.session.add(rec)
+        count += 1
+
+    db.session.commit()
+    return count
