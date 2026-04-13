@@ -33,6 +33,7 @@ class User(db.Model):
 
 
 class Indicador(db.Model):
+    """Modelo legado — mantido para compatibilidade."""
     __tablename__ = "indicadores"
 
     id               = db.Column(db.Integer, primary_key=True)
@@ -86,6 +87,35 @@ class Indicador(db.Model):
         if include_valores:
             d["valores"] = self.get_valores()
         return d
+
+
+class ScorecardItem(db.Model):
+    """
+    Novo modelo para scorecard baseado na planilha de custo/receita.
+    Estrutura: Atividade (grupo) > Descrição (indicador) > 12 meses.
+    """
+    __tablename__ = "scorecard_items"
+
+    id        = db.Column(db.Integer, primary_key=True)
+    atividade = db.Column(db.String(100), index=True)   # grupo pai
+    descricao = db.Column(db.String(200), index=True)   # indicador filho
+    data      = db.Column(db.String(10))                # dd/mm/yyyy ou yyyy-mm
+    ano       = db.Column(db.Integer, index=True)
+    mes       = db.Column(db.Integer)
+    realizado = db.Column(db.Float, nullable=True)
+    orcado    = db.Column(db.Float, nullable=True)
+
+    def to_dict(self):
+        return {
+            "id":        self.id,
+            "atividade": self.atividade,
+            "descricao": self.descricao,
+            "data":      self.data,
+            "ano":       self.ano,
+            "mes":       self.mes,
+            "realizado": self.realizado,
+            "orcado":    self.orcado,
+        }
 
 
 class CustoFixo(db.Model):

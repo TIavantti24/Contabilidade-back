@@ -42,14 +42,14 @@ def create_app():
 
     from app.api.auth import auth_bp
     from app.api.dashboard import dashboard_bp
-    from app.api.indicadores import indicadores_bp
+    from app.api.scorecard import scorecard_bp
     from app.api.custo_fixo import custo_fixo_bp
     from app.api.receita import receita_bp
     from app.api.admin import admin_bp
 
     app.register_blueprint(auth_bp,        url_prefix="/api/auth")
     app.register_blueprint(dashboard_bp,   url_prefix="/api/dashboard")
-    app.register_blueprint(indicadores_bp, url_prefix="/api/indicadores")
+    app.register_blueprint(scorecard_bp,   url_prefix="/api/scorecard")
     app.register_blueprint(custo_fixo_bp,  url_prefix="/api/custo-fixo")
     app.register_blueprint(receita_bp,     url_prefix="/api/receita")
     app.register_blueprint(admin_bp,       url_prefix="/api/admin")
