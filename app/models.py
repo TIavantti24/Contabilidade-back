@@ -91,15 +91,20 @@ class Indicador(db.Model):
 
 class ScorecardItem(db.Model):
     """
-    Novo modelo para scorecard baseado na planilha de custo/receita.
-    Estrutura: Atividade (grupo) > Descrição (indicador) > 12 meses.
+    Scorecard: Grupo > Descrição (pai) > Atividade (filho) > 12 meses.
+    Grupo: seção visual (ex: Finanças, Clientes/Mercado)
+    Grau: ordem de exibição dentro do grupo
+    Seta: 'maior' = quanto maior melhor, 'menor' = quanto menor melhor
     """
     __tablename__ = "scorecard_items"
 
     id        = db.Column(db.Integer, primary_key=True)
-    atividade = db.Column(db.String(100), index=True)   # grupo pai
-    descricao = db.Column(db.String(200), index=True)   # indicador filho
-    data      = db.Column(db.String(10))                # dd/mm/yyyy ou yyyy-mm
+    grupo     = db.Column(db.String(100), index=True)   # seção (ex: Finanças)
+    grau      = db.Column(db.Integer, default=0)         # ordem de exibição
+    seta      = db.Column(db.String(10), default='maior')# 'maior' ou 'menor'
+    atividade = db.Column(db.String(100), index=True)   # filho (ex: Energia)
+    descricao = db.Column(db.String(200), index=True)   # pai (ex: Receita Líquida)
+    data      = db.Column(db.String(10))
     ano       = db.Column(db.Integer, index=True)
     mes       = db.Column(db.Integer)
     realizado = db.Column(db.Float, nullable=True)
@@ -108,6 +113,9 @@ class ScorecardItem(db.Model):
     def to_dict(self):
         return {
             "id":        self.id,
+            "grupo":     self.grupo,
+            "grau":      self.grau,
+            "seta":      self.seta,
             "atividade": self.atividade,
             "descricao": self.descricao,
             "data":      self.data,

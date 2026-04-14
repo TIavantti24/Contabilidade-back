@@ -431,7 +431,9 @@ def import_receita(path: str) -> int:
 def import_scorecard(path: str) -> int:
     """
     Importa planilha de scorecard.
-    Mesma estrutura do custo fixo: Atividade | Descrição | Data | Realizado | Orçado
+    Colunas: Grupo | Grau | Seta | Atividade | Descrição | Tipo | Data | Realizado | Orçado
+    Grupo = seção visual, Grau = ordem, Seta = maior/menor
+    Descrição = PAI, Atividade = FILHO
     """
     from app.models import ScorecardItem
     import datetime as dt
@@ -447,19 +449,22 @@ def import_scorecard(path: str) -> int:
                 return col_map[_normalize(n)]
         return None
 
-    col_ativ = find_col("atividade")
-    col_desc = find_col("descrição", "descricao", "descricção")
-    col_data = find_col("data")
-    col_rea  = find_col("realizado")
-    col_orc  = find_col("orçado", "orcado")
-    col_tipo = find_col("tipo")  # coluna opcional — filtra só "Realizado" se existir
+    col_grupo = find_col("grupo")
+    col_grau  = find_col("grau")
+    col_seta  = find_col("seta")
+    col_ativ  = find_col("atividade")
+    col_desc  = find_col("descrição", "descricao")
+    col_tipo  = find_col("tipo")
+    col_data  = find_col("data")
+    col_rea   = find_col("realizado")
+    col_orc   = find_col("orçado", "orcado")
 
     if not col_ativ:
-        raise ValueError("Coluna 'Atividade' não encontrada na planilha de Scorecard.")
+        raise ValueError("Coluna 'Atividade' não encontrada.")
     if not col_desc:
-        raise ValueError("Coluna 'Descrição' não encontrada na planilha de Scorecard.")
+        raise ValueError("Coluna 'Descrição' não encontrada.")
 
-    # Se tiver coluna Tipo, mantém só as linhas de Realizado
+    # Filtra só linhas Realizado se coluna Tipo existir
     if col_tipo:
         df = df[df[col_tipo].astype(str).str.lower().str.strip() == 'realizado'].copy()
 
@@ -470,14 +475,11 @@ def import_scorecard(path: str) -> int:
     for _, row in df.iterrows():
         atividade = str(row.get(col_ativ, "") or "").strip()
         descricao = str(row.get(col_desc, "") or "").strip()
-        if not atividade or atividade.lower() == "nan":
-            continue
-        if not descricao or descricao.lower() == "nan":
-            continue
+        if not atividade or atividade.lower() == "nan": continue
+        if not descricao or descricao.lower() == "nan": continue
 
         data_raw = row.get(col_data) if col_data else None
         data_str, ano, mes = "", None, None
-
         if data_raw is not None:
             if isinstance(data_raw, (dt.datetime, dt.date)):
                 ano, mes = data_raw.year, data_raw.month
@@ -490,29 +492,36 @@ def import_scorecard(path: str) -> int:
                         try:
                             _, mes, ano = int(parts[0]), int(parts[1]), int(parts[2])
                             data_str = f"{ano}-{mes:02d}"
-                        except ValueError:
-                            pass
+                        except ValueError: pass
                 elif "-" in data_str:
                     parts = data_str.split("-")
                     if len(parts) >= 2:
-                        try:
-                            ano, mes = int(parts[0]), int(parts[1])
-                        except ValueError:
-                            pass
+                        try: ano, mes = int(parts[0]), int(parts[1])
+                        except ValueError: pass
 
         def safe_float(col):
-            if not col:
-                return None
+            if not col: return None
             v = row.get(col)
-            if v is None:
-                return None
+            if v is None: return None
             try:
                 f = float(v)
                 return f if not pd.isna(f) else None
-            except (ValueError, TypeError):
-                return None
+            except (ValueError, TypeError): return None
+
+        def safe_int(col, default=0):
+            if not col: return default
+            v = row.get(col)
+            try: return int(float(v)) if v and str(v).lower() != 'nan' else default
+            except: return default
+
+        grupo = str(row.get(col_grupo, "") or "").strip() if col_grupo else ""
+        seta  = str(row.get(col_seta,  "") or "").strip().lower() if col_seta else "maior"
+        grau  = safe_int(col_grau, 0)
 
         item = ScorecardItem(
+            grupo=grupo,
+            grau=grau,
+            seta=seta if seta in ('maior','menor') else 'maior',
             atividade=atividade,
             descricao=descricao,
             data=data_str,
