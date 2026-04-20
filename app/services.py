@@ -269,6 +269,7 @@ def import_custo_fixo(path: str) -> int:
     col_data  = find_col("data")
     col_rea   = find_col("realizado")
     col_orc   = find_col("orçado", "orcado")
+    col_grau  = find_col("grau")
 
     if not col_ativ:
         raise ValueError("Coluna 'Atividade' não encontrada na planilha de Custo Fixo.")
@@ -326,7 +327,14 @@ def import_custo_fixo(path: str) -> int:
             except (ValueError, TypeError):
                 return None
 
+        def safe_int(col, default=0):
+            if not col: return default
+            v = row.get(col)
+            try: return int(float(v)) if v and str(v).lower() != 'nan' else default
+            except: return default
+
         cf = CustoFixo(
+            grau=safe_int(col_grau, 0),
             atividade=atividade,
             descricao=str(row.get(col_desc, "") or "").strip() if col_desc else "",
             data=data_str,
@@ -362,6 +370,7 @@ def import_receita(path: str) -> int:
     col_data = find_col("data")
     col_rea  = find_col("realizado")
     col_orc  = find_col("orçado", "orcado")
+    col_grau = find_col("grau")
 
     if not col_ativ:
         raise ValueError("Coluna 'Atividade' não encontrada na planilha de Receita.")
@@ -412,7 +421,14 @@ def import_receita(path: str) -> int:
             except (ValueError, TypeError):
                 return None
 
+        def safe_int(col, default=0):
+            if not col: return default
+            v = row.get(col)
+            try: return int(float(v)) if v and str(v).lower() != 'nan' else default
+            except: return default
+
         rec = Receita(
+            grau=safe_int(col_grau, 0),
             atividade=atividade,
             descricao=str(row.get(col_desc, "") or "").strip() if col_desc else "",
             data=data_str,
@@ -464,9 +480,14 @@ def import_scorecard(path: str) -> int:
     if not col_desc:
         raise ValueError("Coluna 'Descrição' não encontrada.")
 
-    # Filtra só linhas Realizado se coluna Tipo existir
+    # Para cada (Atividade, Descrição, Data): usa Realizado se existir, senão Projetado
     if col_tipo:
-        df = df[df[col_tipo].astype(str).str.lower().str.strip() == 'realizado'].copy()
+        df[col_tipo] = df[col_tipo].astype(str).str.strip().str.lower()
+        df['_tipo_ord'] = df[col_tipo].map({'realizado': 0, 'projetado': 1}).fillna(2)
+        df = df.sort_values('_tipo_ord')
+        if col_data:
+            df = df.drop_duplicates(subset=[col_ativ, col_desc, col_data], keep='first').copy()
+        df = df.drop(columns=['_tipo_ord'])
 
     ScorecardItem.query.delete()
     db.session.flush()
@@ -514,6 +535,24 @@ def import_scorecard(path: str) -> int:
             try: return int(float(v)) if v and str(v).lower() != 'nan' else default
             except: return default
 
+        def safe_int(col, default=0):
+            if not col: return default
+            v = row.get(col)
+            try: return int(float(v)) if v and str(v).lower() != 'nan' else default
+            except: return default
+
+        def safe_int(col, default=0):
+            if not col: return default
+            v = row.get(col)
+            try: return int(float(v)) if v and str(v).lower() != 'nan' else default
+            except: return default
+
+        def safe_int(col, default=0):
+            if not col: return default
+            v = row.get(col)
+            try: return int(float(v)) if v and str(v).lower() != 'nan' else default
+            except: return default
+
         grupo = str(row.get(col_grupo, "") or "").strip() if col_grupo else ""
         seta  = str(row.get(col_seta,  "") or "").strip().lower() if col_seta else "maior"
         grau  = safe_int(col_grau, 0)
@@ -531,6 +570,116 @@ def import_scorecard(path: str) -> int:
             orcado=safe_float(col_orc),
         )
         db.session.add(item)
+        count += 1
+
+    db.session.commit()
+    return count
+
+def import_dre(path: str) -> int:
+    """
+    Importa TODOS os dados da planilha DRE.
+    Prefere Realizado quando disponível, usa Projetado como fallback.
+    Os cards de KPI filtram Lucro Líquido no endpoint /kpi.
+    """
+    from app.models import Dre
+    import datetime
+
+    df = pd.read_excel(path)
+    df.columns = [str(c).strip() for c in df.columns]
+
+    col_map = {_normalize(c): c for c in df.columns}
+
+    def find_col(*names):
+        for n in names:
+            if _normalize(n) in col_map:
+                return col_map[_normalize(n)]
+        return None
+
+    col_ativ = find_col("atividade")
+    col_desc = find_col("descrição", "descricao")
+    col_data = find_col("data")
+    col_rea  = find_col("realizado")
+    col_orc  = find_col("orçado", "orcado")
+    col_tipo = find_col("tipo")
+    col_grau = find_col("grau")
+
+    if not col_ativ:
+        raise ValueError("Coluna 'Atividade' não encontrada na planilha de DRE.")
+
+    # Prefere Realizado, usa Projetado como fallback por (ativ, desc, data)
+    if col_tipo and col_data:
+        df[col_tipo] = df[col_tipo].astype(str).str.strip().str.lower()
+        df['_ord'] = df[col_tipo].map({'realizado': 0, 'projetado': 1}).fillna(2)
+        df = df.sort_values('_ord')
+        subset = [col_ativ, col_data]
+        if col_desc:
+            subset.append(col_desc)
+        df = df.drop_duplicates(subset=subset, keep='first').copy()
+        df = df.drop(columns=['_ord'])
+
+    Dre.query.delete()
+    db.session.flush()
+
+    count = 0
+    for _, row in df.iterrows():
+        atividade = str(row.get(col_ativ, "") or "").strip()
+        if not atividade or atividade.lower() == "nan":
+            continue
+
+        data_raw = row.get(col_data) if col_data else None
+        data_str, ano, mes = "", None, None
+
+        if data_raw is not None:
+            if isinstance(data_raw, (datetime.datetime, datetime.date)):
+                ano, mes = data_raw.year, data_raw.month
+                data_str = f"{ano}-{mes:02d}"
+            else:
+                data_str = str(data_raw).strip()
+                if "/" in data_str:
+                    parts = data_str.split("/")
+                    if len(parts) == 3:
+                        try:
+                            dia, mes, ano = int(parts[0]), int(parts[1]), int(parts[2])
+                            data_str = f"{ano}-{mes:02d}"
+                        except ValueError:
+                            pass
+                elif "-" in data_str:
+                    parts = data_str.split("-")
+                    if len(parts) >= 2:
+                        try:
+                            ano, mes = int(parts[0]), int(parts[1])
+                        except ValueError:
+                            pass
+
+        def safe_float(col):
+            if not col:
+                return None
+            v = row.get(col)
+            if v is None:
+                return None
+            try:
+                f = float(v)
+                return f if not pd.isna(f) else None
+            except (ValueError, TypeError):
+                return None
+
+        def safe_int(col, default=0):
+            if not col: return default
+            v = row.get(col)
+            try: return int(float(v)) if v and str(v).lower() != 'nan' else default
+            except: return default
+
+        rec = Dre(
+            grau=safe_int(col_grau, 0),
+            atividade=atividade,
+            descricao=str(row.get(col_desc, "") or "").strip() if col_desc else "",
+            data=data_str,
+            ano=ano,
+            mes=mes,
+            realizado=safe_float(col_rea),
+            orcado=safe_float(col_orc),
+        )
+        db.session.add(rec)
         count += 1
 
     db.session.commit()

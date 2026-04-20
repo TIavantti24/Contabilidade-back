@@ -4,7 +4,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
 from app import db
 from app.models import User, Indicador, ImportLog
-from app.services import import_excel_indicadores, import_custo_fixo, import_receita, import_scorecard
+from app.services import import_excel_indicadores, import_custo_fixo, import_receita, import_scorecard, import_dre
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -133,6 +133,12 @@ def import_receita_view():
 @jwt_required()
 def import_scorecard_view():
     return _do_import("planilha_scorecard", import_scorecard, "scorecard")
+
+
+@admin_bp.route("/import/dre", methods=["POST"])
+@jwt_required()
+def import_dre_view():
+    return _do_import("planilha_dre", import_dre, "dre")
 
 
 @admin_bp.route("/import/logs", methods=["GET"])

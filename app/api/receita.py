@@ -13,7 +13,7 @@ def list_receita():
     ano_f  = request.args.get("ano", "")
     desc_f = request.args.get("descricao", "")
 
-    query = Receita.query.order_by(Receita.ano, Receita.mes)
+    query = Receita.query.order_by(Receita.grau, Receita.descricao, Receita.atividade, Receita.mes)
     if ativ_f:
         query = query.filter_by(atividade=ativ_f)
     if ano_f:
