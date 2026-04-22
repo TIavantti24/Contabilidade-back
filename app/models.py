@@ -131,8 +131,6 @@ class CustoFixo(db.Model):
 
     id        = db.Column(db.Integer, primary_key=True)
     grau      = db.Column(db.Integer, default=0)
-    grau      = db.Column(db.Integer, default=0)
-    grau      = db.Column(db.Integer, default=0)
     atividade = db.Column(db.String(100))
     descricao = db.Column(db.String(200))
     data      = db.Column(db.String(10))
@@ -159,6 +157,7 @@ class Receita(db.Model):
     __tablename__ = "receita"
 
     id        = db.Column(db.Integer, primary_key=True)
+    grau      = db.Column(db.Integer, default=0)
     atividade = db.Column(db.String(100))
     descricao = db.Column(db.String(200))
     data      = db.Column(db.String(10))
@@ -185,6 +184,7 @@ class Dre(db.Model):
     __tablename__ = "dre"
 
     id        = db.Column(db.Integer, primary_key=True)
+    grau      = db.Column(db.Integer, default=0)
     atividade = db.Column(db.String(100))
     descricao = db.Column(db.String(200))
     data      = db.Column(db.String(10))
