@@ -226,3 +226,33 @@ class ImportLog(db.Model):
             "total":       self.total,
             "imported_by": self.imported_by,
         }
+
+    # Adicione esta classe no final do arquivo app/models.py
+
+    # Adicione esta classe no final do arquivo app/models.py
+
+class Manutencao(db.Model):
+    __tablename__ = "manutencao"
+
+    id = db.Column(db.Integer, primary_key=True)
+    grau = db.Column(db.Integer, default=0)
+    atividade = db.Column(db.String(100))
+    descricao = db.Column(db.String(200))
+    data = db.Column(db.String(10))
+    ano = db.Column(db.Integer)
+    mes = db.Column(db.Integer)
+    realizado = db.Column(db.Float, nullable=True)
+    orcado = db.Column(db.Float, nullable=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "grau": self.grau,
+            "atividade": self.atividade,
+            "descricao": self.descricao,
+            "data": self.data,
+            "ano": self.ano,
+            "mes": self.mes,
+            "realizado": self.realizado,
+            "orcado": self.orcado,
+        }

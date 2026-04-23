@@ -40,3 +40,9 @@ with app.app_context():
         print("✅ Tabelas criadas e usuário admin gerado (senha: admin123)")
     else:
         print("ℹ️  Banco já inicializado.")
+from app import create_app, db
+from app.models import Manutencao
+
+app = create_app()
+with app.app_context():
+    db.create_all()
